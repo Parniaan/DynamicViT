@@ -29,6 +29,7 @@ from vit import VisionTransformerDiffPruning
 from lvvit import LVViTDiffPruning
 
 
+
 def get_args_parser():
     parser = argparse.ArgumentParser('DeiT training and evaluation script', add_help=False)
     parser.add_argument('--batch-size', default=128, type=int)
@@ -42,7 +43,7 @@ def get_args_parser():
                         choices=['kingdom', 'phylum', 'class', 'order', 'supercategory', 'family', 'genus', 'name'],
                         type=str, help='semantic granularity')
     parser.add_argument('--seed', default=0, type=int)
-    parser.add_argument('--model-path', default='', help='resume from checkpoint')
+    parser.add_argument('--model-path', default='./model/dynamic-vit_384_r0.7.pth', help='resume from checkpoint')
     parser.add_argument('--num_workers', default=10, type=int)
     parser.add_argument('--pin-mem', action='store_true',
                         help='Pin CPU memory in DataLoader for more efficient (sometimes) transfer to GPU.')
@@ -69,6 +70,9 @@ def main(args):
 
     base_rate = args.base_rate
     KEEP_RATE = [base_rate, base_rate ** 2, base_rate ** 3]
+
+    print("------------------- args.arch ---------------------", args.arch)
+    print("cuda??????????", torch.cuda.is_available())
 
     if args.arch == 'deit_small':
         PRUNING_LOC = [3,6,9] 
@@ -108,17 +112,25 @@ def main(args):
         raise NotImplementedError
 
     model_path = args.model_path
+
+    print('---- model path', model_path)
+
     checkpoint = torch.load(model_path, map_location="cpu")
+    print('what is checkpoint here???', checkpoint)
     model.load_state_dict(checkpoint["model"])
 
     print('## model has been successfully loaded')
 
-    model = model.cuda()
+    use_cuda = torch.cuda.is_available()
+    device = torch.device("cuda" if use_cuda else "cpu")
+    print("What is device??????", device)
+
+    model = model.to(device)
 
     n_parameters = sum(p.numel() for p in model.parameters())
     print('number of params:', n_parameters)
 
-    criterion = torch.nn.CrossEntropyLoss().cuda()
+    criterion = torch.nn.CrossEntropyLoss().to(device)
     validate(data_loader_val, model, criterion)
 
 class AverageMeter(object):
@@ -191,9 +203,12 @@ def validate(val_loader, model, criterion):
 
     with torch.no_grad():
         end = time.time()
+        use_cuda = torch.cuda.is_available()
+        device = torch.device('cuda:0' if use_cuda else 'cpu')
+
         for i, (images, target) in enumerate(val_loader):
-            images = images.cuda()
-            target = target.cuda()
+            images = images.to(device)
+            target = target.to(device)
 
             # compute output
             output = model(images)
